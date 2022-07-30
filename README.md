@@ -1,5 +1,5 @@
 # eduroamProvisioningTools
-Tools and example codes for eduroam profile provisioning. (eduroam OpenRoaming is not supported.)
+Tools and example codes for eduroam profile provisioning. (eduroam-OpenRoaming is not supported.)
 
 ## Features
 - The tools and codes help institutions develop their own eduroam profile provisioning systems.
