@@ -15,7 +15,7 @@
 #    to the main script using a random key through Redis.
 #  - See also the main script eduroam-win.config.
 #
-# 20220731 Hideaki Goto (Cityroam/eduroam)
+# 20220731 Hideaki Goto (Tohoku University and eduroam JP)
 #
 
 use String::Random;
