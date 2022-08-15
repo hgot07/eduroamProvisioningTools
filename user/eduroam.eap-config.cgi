@@ -21,6 +21,7 @@
 #    https://github.com/GEANT/CAT/blob/master/devices/xml/eap-metadata.xsd
 #
 # 20220814 Hideaki Goto (Tohoku University and eduroam JP)
+# 20220815 Hideaki Goto (Tohoku University and eduroam JP)
 #
 
 use CGI;
@@ -84,6 +85,11 @@ EOS
 
 $ts=DateTime->now->datetime."Z";
 
+$xml_Expire = '';
+if ( $ExpirationDate ne '' ){
+	$xml_Expire = "    <ValidUntil>$ExpirationDate</ValidUntil>\n";
+}
+
 $RCOI =~ s/\s*//g;
 $xml_RCOI = '';
 if ( $RCOI ne '' ){
@@ -113,7 +119,7 @@ my $xml = <<"EOS";
 <?xml version="1.0" encoding="utf-8"?>
 <EAPIdentityProviderList xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="eap-metadata.xsd">
   <EAPIdentityProvider ID="$HomeDomain" namespace="urn:RFC4282:realm" lang="en" version="1">
-    <AuthenticationMethods>
+${xml_Expire}    <AuthenticationMethods>
       <AuthenticationMethod>
 ${EAPMethods}        <ServerSideCredential>
           <CA format="X.509" encoding="base64">
@@ -124,6 +130,7 @@ $cert
         <ClientSideCredential>
           <OuterIdentity>$anonID</OuterIdentity>
           <UserName>$userID</UserName>
+          <Username>$userID</Username>
           <Password>$passwd</Password>
         </ClientSideCredential>
 ${InnerAuth}      </AuthenticationMethod>
