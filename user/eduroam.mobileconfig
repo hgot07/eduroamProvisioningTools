@@ -23,6 +23,8 @@
 # 20220731 Hideaki Goto (Tohoku University and eduroam JP)
 # 20220805 Hideaki Goto (Tohoku University and eduroam JP)
 #    + expiration date
+# 20220817 Hideaki Goto (Tohoku University and eduroam JP)
+#    + cert. chain for signing
 #
 
 use CGI;
@@ -34,8 +36,12 @@ use Data::UUID;
 #---- Configuration part ----
 
 #### Add your own code here to set ID/PW. ####
-$userID = 'name@example.com';
-$passwd = 'somePassword';
+#$userID = 'name@example.com';
+#$passwd = 'somePassword';
+
+# External code that sets $userID and $passwd
+require '../etc/getuserinfo.pl';
+if ( &getuserinfo( $ENV{'REMOTE_USER'} ) ){ exit(1); }
 
 $uname = $anonID = $userID;
 $anonID =~ s/^.*@/anonymous@/;
@@ -45,6 +51,7 @@ require '../etc/eduroam-common.cfg';
 
 # To omit signing, uncomment this.
 #$signercert = '';
+#$signerchain = '';
 
 # Override the expiration date if necessary.
 #$ExpirationDate = '';
@@ -198,8 +205,12 @@ if ( $signercert eq '' ){
 	print $xmltext;
 }
 else{
-#	open(fh, "| sudo openssl smime -sign -nodetach -signer $signercert -inkey $signerkey -outform der");
-	open(fh, "| openssl smime -sign -nodetach -signer $signercert -inkey $signerkey -outform der");
+	if ( $signerchain eq '' ){
+		open(fh, "| openssl smime -sign -nodetach -signer $signercert -inkey $signerkey -outform der");
+	}
+	else{
+		open(fh, "| openssl smime -sign -nodetach -certfile ../etc/chain.pem -signer $signercert -inkey $signerkey -outform der");
+	}
 	print fh $xmltext;
 	close(fh);
 }
