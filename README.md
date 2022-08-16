@@ -6,6 +6,6 @@ Tools and example codes for eduroam profile provisioning. (eduroam-OpenRoaming i
 - The CGI scripts allow end users to download eduroam profile and configure the user device without typing in eduroam ID/password (or certificate). [geteduroam](https://www.geteduroam.app/) is a recommended app for device configuration.
 
 ## Directory layout
-- user: Website with user's login.
+- user: Website with user's login, i.e., with access control.
 - ext: Open website.
 - etc: Storage for configuration and certificate files.
