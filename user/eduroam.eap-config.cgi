@@ -22,6 +22,8 @@
 #
 # 20220814 Hideaki Goto (Tohoku University and eduroam JP)
 # 20220815 Hideaki Goto (Tohoku University and eduroam JP)
+# 20220826 Hideaki Goto (Tohoku University and eduroam JP)
+#	+ per-user ExpirationDate
 #
 
 use CGI;
@@ -32,23 +34,19 @@ use Data::UUID;
 
 #---- Configuration part ----
 
+# include common settings
+require '../etc/eduroam-common.cfg';
+
 #### Add your own code here to set ID/PW. ####
 #$userID = 'name@example.com';
 #$passwd = 'somePassword';
 
-# External code that sets $userID and $passwd
+# External code that sets $userID, $passwd, and optionally $ExpirationDate
 require '../etc/getuserinfo.pl';
 if ( &getuserinfo( $ENV{'REMOTE_USER'} ) ){ exit(1); }
 
 $uname = $anonID = $userID;
 $anonID =~ s/^.*@/anonymous@/;
-
-# include common settings
-require '../etc/eduroam-common.cfg';
-
-# Override the expiration date if necessary.
-#$ExpirationDate = '';
-#$ExpirationDate = '2024-01-05T00:00:00Z';
 
 =pod	# EAP-TTLS with MSCHAPv2
 $EAPMethods = <<"EOS";
