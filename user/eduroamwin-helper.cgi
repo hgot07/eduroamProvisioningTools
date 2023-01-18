@@ -16,12 +16,15 @@
 #  - See also the main script eduroam-win.config.
 #
 # 20220731 Hideaki Goto (Tohoku University and eduroam JP)
+# 20230118 Hideaki Goto (Tohoku University and eduroam JP)
+#	+ Script URI auto-setting
 #
 
 use String::Random;
 use Redis;
 
-$confCGI = 'ms-settings:wifi-provisioning?uri=https://idp.cityroam.jp/deas/ext/eduroam-win.config';
+$confCGI = "ms-settings:wifi-provisioning?uri=https://$ENV{'HTTP_HOST'}$ENV{'REQUEST_URI'}";
+$confCGI =~ s/user\/eduroamwin-helper.cgi/ext\/eduroam-win.config/;
 
 $TTL = 60;
 
