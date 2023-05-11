@@ -18,7 +18,7 @@
 # 20220731 Hideaki Goto (Tohoku University and eduroam JP)
 # 20230118 Hideaki Goto (Tohoku University and eduroam JP)
 #	+ Script URI auto-setting
-# 20230510 Hideaki Goto (Tohoku University and eduroam JP)
+# 20230511 Hideaki Goto (Tohoku University and eduroam JP)
 #	+ Fixed very rare key conflict in redis
 #
 
@@ -38,8 +38,7 @@ $uid = $ENV{'REMOTE_USER'};
 my $cnt = 10;
 do {
 	$key = $sr->randregex('[a-zA-Z0-9]{20}');
-} while ( ! $redis->setnx($key, $uid) && $cnt-- >0 );
-$redis->set($key, "$uid", 'EX', $TTL);
+} while ( ! $redis->set($key, "$uid", 'EX', $TTL, 'NX') && $cnt-- >0 );
 
 print << "EOS";
 Content-Type: text/html
