@@ -1,0 +1,25 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"> 
+<title>User Menu</title>
+</head>
+<body>
+<H1>ユーザーメニュー</H1>
+
+<ul>
+<!--
+<li><a href="showid.cgi">接続情報</a> (ID, パスワードなど)</li>
+<br>
+-->
+<li><a href="eduroam.mobileconfig.cgi">eduroam設定 (iOS/iPadOS 14以上, macOS 10以上)</a></li>
+<li><a href="eduroamwin-helper.cgi">eduroam設定 (Windows 11 22H2以降)</a></li>
+<br>
+<li><a href="eduroam-onc.cgi">eduroam設定 (ChromeOS)</a></li>
+設定ファイル(eduroam-config.onc)がダウンロードされたら、ブラウザで 
+chrome://network にアクセスして、「ONCファイルのインポート」でファイルを読み込ませてください。
+<br><br>
+<li><a href="eduroam.eap-config.cgi">eduroam設定 (eap-config形式)</a>
+(各種OS対応, <a href="https://www.geteduroam.app/" target="_blank" rel="norefferrer">geteduroam</a>で端末設定ができます)</li>
+</ul>
+</body>
+</html>
