@@ -8,6 +8,9 @@ sub getuserinfo {
 	#$passwd = 'somePassword';
 	#$ExpirationDate = '2023-01-05T00:00:00Z';
 
+	# for EAP-TLS (in PEM format)
+	#$clientcert = '';
+
 	return(0);
 }
 
