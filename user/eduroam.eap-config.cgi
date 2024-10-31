@@ -18,12 +18,14 @@
 #  - eduroam CAT
 #    https://cat.eduroam.org/
 #  - eap-metadata.xsd
-#    https://github.com/GEANT/CAT/blob/master/devices/xml/eap-metadata.xsd
+#    https://github.com/GEANT/CAT/blob/master/devices/eap_config/eap-metadata.xsd
 #
 # 20220814 Hideaki Goto (Tohoku University and eduroam JP)
 # 20220815 Hideaki Goto (Tohoku University and eduroam JP)
 # 20220826 Hideaki Goto (Tohoku University and eduroam JP)
 #	+ per-user ExpirationDate
+# 20241030 Hideaki Goto (Tohoku University and eduroam JP)
+#	Update a reference. Add EAP-TLS support.
 #
 
 use CGI;
@@ -77,9 +79,22 @@ $InnerAuth = <<"EOS";
         </InnerAuthenticationMethod>
 EOS
 
+# EAP-TLS
+if ( $client_cert_np ){
+$EAPMethods = <<"EOS";
+        <EAPMethod>
+          <Type>13</Type>
+        </EAPMethod>
+EOS
+$InnerAuth = '';
+}
+
 
 #---- Profile composition part ----
 # (no need to edit below, hopefully)
+
+# Fix certificate format
+chomp($client_cert_np);
 
 $ts=DateTime->now->datetime."Z";
 
@@ -113,7 +128,41 @@ $cert = '';
 	$cert =~ s/[\r\n]//g;
 }
 
-my $xml = <<"EOS";
+
+if ( $client_cert_np ){
+
+$xml = <<"EOS";
+<?xml version="1.0" encoding="utf-8"?>
+<EAPIdentityProviderList xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="eap-metadata.xsd">
+  <EAPIdentityProvider ID="$HomeDomain" namespace="urn:RFC4282:realm" lang="en" version="1">
+${xml_Expire}    <AuthenticationMethods>
+      <AuthenticationMethod>
+${EAPMethods}        <ServerSideCredential>
+          <CA format="X.509" encoding="base64">
+$cert
+          </CA>
+          <ServerID>$AAAFQDN</ServerID>
+        </ServerSideCredential>
+        <ClientSideCredential>
+          <OuterIdentity>$anonID</OuterIdentity>
+          <ClientCertificate>$client_cert_np</ClientCertificate>
+        </ClientSideCredential>
+${InnerAuth}      </AuthenticationMethod>
+    </AuthenticationMethods>
+    <CredentialApplicability>
+${xml_RCOI}    </CredentialApplicability>
+    <ProviderInfo>
+      <DisplayName>$friendlyName</DisplayName>
+      <Helpdesk/>
+    </ProviderInfo>
+  </EAPIdentityProvider>
+</EAPIdentityProviderList>
+EOS
+
+}
+else {
+
+$xml = <<"EOS";
 <?xml version="1.0" encoding="utf-8"?>
 <EAPIdentityProviderList xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="eap-metadata.xsd">
   <EAPIdentityProvider ID="$HomeDomain" namespace="urn:RFC4282:realm" lang="en" version="1">
@@ -146,6 +195,9 @@ ${xml_RCOI}    </CredentialApplicability>
   </EAPIdentityProvider>
 </EAPIdentityProviderList>
 EOS
+
+}
+
 chomp $xml;
 
 print <<"EOS";
