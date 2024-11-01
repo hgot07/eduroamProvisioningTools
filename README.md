@@ -10,7 +10,7 @@ Only EAP-TTLS is supported. If you want to use EAP-TLS, you need to write your o
 ## Directory layout
 - user: Website with user's login, i.e., with an access control.
 - ext: Open website where Windows Wi-Fi Settings can download the profile from.
-- etc: Storage for configuration and certificate files.
+- etc: Storage for configuration and certificate files. (Access restriction is necessary.)
 
 ## Requirements
 Redis or compatible server is needed on the same host.
@@ -24,6 +24,7 @@ These tools are compatible with WPA3. Even if you see WPA2 string in the profile
 Profile for Android (PPS MO) does not have such setting. You don't need to care.
 
 ## EAP-TLS support status
+### Supported OS
 These tools support EAP-TLS on the following operating systems.
 - iOS/iPadOS
 - macOS
@@ -39,9 +40,17 @@ A workaround is as follows, but this is cumbersome.
 1. User configures the device through the web-based provisioning
  and loads the client certificate manually.
 
-Note that the EAP-TLS (RFC 5216) is not always so secure in terms of privacy.
+### Note on Privacy Protection
+EAP-TLS (RFC 5216) is not always so secure in terms of privacy.
+When TLS 1.2 or older is used,
 Access Network Providers can snoop into the contents of client certificates.
-A workaround is to use "EAP-TTLS with EAP-TLS as inner method".
+An efficient and straightforward solution would be
+ to use TLS 1.3.
+
+When TLS 1.3 is not available on user devices,
+a compromised solution would be to use
+"EAP-TTLS with EAP-TLS as inner method".
+Client certificates are protected by the encrypted tunnel of EAP-TTLS.
 Some supplicants like wpa_supplicant and Windows support this configuration,
  but the ms-settings: URI scheme does not work as explained above.
 
