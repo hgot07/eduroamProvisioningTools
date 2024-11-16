@@ -18,6 +18,8 @@
 #    https://chromium.googlesource.com/chromium/src/+/main/components/onc/docs/onc_spec.md
 #
 # 20230712 Hideaki Goto (Tohoku University and eduroam JP)
+# 20241117 Hideaki Goto (Tohoku University and eduroam JP)
+#	Add EAP-TLS support.
 #
 
 use CGI;
@@ -50,12 +52,20 @@ $OuterMethod = "PEAP";
 #---- Profile composition part ----
 # (no need to edit below, hopefully)
 
+# Fix certificate format
+chomp $client_cert_np;
+$client_cert_np =~ s/[\r\n]//g;
+$client_cert_np =~ s/\//\\\//g;
+$client_cert_np =~ s/\s+//g;
+
 $ts=DateTime->now->datetime."Z";
 
 my $uuid1 = Data::UUID->new->create_str();
 $uuid1 = uc $uuid1;
-my $uuid2 = Data::UUID->new->create_str();
-$uuid2 = uc $uuid2;
+my $uuid_s = Data::UUID->new->create_str();
+$uuid_s = uc $uuid_s;
+my $uuid_c = Data::UUID->new->create_str();
+$uuid_c = uc $uuid_c;
 
 $xml_cert = '';
 if ( $CAfile ne '' ){
@@ -72,12 +82,71 @@ $cert = '';
 	$cert =~ s/\//\\\//g;
 }
 
-my $xml = <<"EOS";
+
+if ( $client_cert_np ){
+
+$xml = <<"EOS";
 {
     "Type": "UnencryptedConfiguration",
     "Certificates": [
         {
-            "GUID": "{$uuid1}",
+            "GUID": "{$uuid_s}",
+            "Remove": false,
+            "Type": "Authority",
+            "X509": "$cert"
+        },
+        {
+            "GUID": "{$uuid_c}",
+            "Remove": false,
+            "Type": "Client",
+            "PKCS12": "$client_cert_np"
+        }
+    ],
+    "NetworkConfigurations": [
+        {
+            "GUID": "$uuid1",
+            "Name": "$SSID",
+            "Remove": false,
+            "Type": "WiFi",
+            "WiFi": {
+                "AutoConnect": true,
+                "EAP": {
+                    "ClientCertType": "Ref",
+                    "ClientCertRef": "$uuid_c",
+                    "Identity": "$anonID",
+                    "Outer": "EAP-TLS",
+                    "ServerCARefs": [
+                        "{$uuid_s}"
+                    ],
+                    "UseSystemCAs": true,
+                    "SubjectAlternativeNameMatch": [
+                        {
+                            "Type": "DNS",
+                            "Value": "$AAAFQDN"
+                        }
+                    ]
+                },
+                "HiddenSSID": false,
+                "SSID": "$SSID",
+                "Security": "WPA-EAP"
+            },
+            "ProxySettings": {
+                "Type": "WPAD"
+            }
+        }
+    ]
+}
+EOS
+
+}
+else {
+
+$xml = <<"EOS";
+{
+    "Type": "UnencryptedConfiguration",
+    "Certificates": [
+        {
+            "GUID": "{$uuid_s}",
             "Remove": false,
             "Type": "Authority",
             "X509": "$cert"
@@ -85,8 +154,8 @@ my $xml = <<"EOS";
     ],
     "NetworkConfigurations": [
         {
-            "GUID": "$uuid2",
-            "Name": "eduroam",
+            "GUID": "$uuid1",
+            "Name": "$SSID",
             "Remove": false,
             "Type": "WiFi",
             "WiFi": {
@@ -99,9 +168,9 @@ my $xml = <<"EOS";
                     "Inner": "$InnerMethod",
                     "SaveCredentials": true,
                     "ServerCARefs": [
-                        "{$uuid1}"
+                        "{$uuid_s}"
                     ],
-                    "UseSystemCAs": false,
+                    "UseSystemCAs": true,
                     "SubjectAlternativeNameMatch": [
                         {
                             "Type": "DNS",
@@ -110,7 +179,7 @@ my $xml = <<"EOS";
                     ]
                 },
                 "HiddenSSID": false,
-                "SSID": "eduroam",
+                "SSID": "$SSID",
                 "Security": "WPA-EAP"
             },
             "ProxySettings": {
@@ -120,6 +189,8 @@ my $xml = <<"EOS";
     ]
 }
 EOS
+
+}
 
 print <<"EOS";
 Content-Type: application/octet-stream
