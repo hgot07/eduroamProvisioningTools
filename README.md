@@ -28,6 +28,7 @@ Profile for Android (PPS MO) does not have such setting. You don't need to care.
 These tools support EAP-TLS on the following operating systems.
 - iOS/iPadOS
 - macOS
+- ChromeOS
 - Some OSs supported by geteduroam
 
 Unfortunately, Windows does not support EAP-TLS setting
