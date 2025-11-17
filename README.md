@@ -1,7 +1,7 @@
 # eduroamProvisioningTools
-Tools and example codes for eduroam profile provisioning. (eduroam-OpenRoaming is not supported, but modification would be easy.)
+Tools and example codes for eduroam profile provisioning. (eduroam-on-OpenRoaming is not supported, but modification would be easy.)
 
-Only EAP-TTLS is supported. If you want to use EAP-TLS, you need to write your own code. Some OSs may not support EAP-TLS.
+Only EAP-TTLS and EAP-TLS are supported. Some OSs may not support EAP-TLS.
 
 ## Features
 - The tools and codes help institutions develop their own eduroam profile provisioning systems.
@@ -19,7 +19,7 @@ CGI scripts require execution handler,
  e.g. "AddHandler cgi-script .cgi .config" in case of Apache2 web server.
 
 ## About WPA2/WPA3 compatibility
-These tools are compatible with WPA3. Even if you see WPA2 string in the profiles, it allows Apple and Microsoft devices to join WPA2 or WPA3 networks. 
+These tools are compatible with WPA3. Even if you see a WPA2 string in the profiles, it allows Apple and Microsoft devices to join either WPA2 and WPA3 networks. 
 
 Profile for Android (PPS MO) does not have such setting. You don't need to care.
 
@@ -45,6 +45,7 @@ A workaround is as follows, but this is cumbersome.
 EAP-TLS (RFC 5216) is not always so secure in terms of privacy.
 When TLS 1.2 or older is used,
 Access Network Providers can snoop into the contents of client certificates.
+This allows the providers to keep track of each user. 
 An efficient and straightforward solution would be
  to use TLS 1.3.
 
