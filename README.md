@@ -3,6 +3,8 @@ Tools and example codes for eduroam profile provisioning. (eduroam-on-OpenRoamin
 
 Only EAP-TTLS and EAP-TLS are supported. Some OSs may not support EAP-TLS.
 
+日本語の紹介は → [こちら](README-ja.md)
+
 ## Features
 - The tools and codes help institutions develop their own eduroam profile provisioning systems.
 - The CGI scripts allow end users to download eduroam profile and configure the user device without typing in eduroam ID/password (or certificate). [geteduroam](https://www.geteduroam.app/) is a recommended app for device configuration.
@@ -10,7 +12,7 @@ Only EAP-TTLS and EAP-TLS are supported. Some OSs may not support EAP-TLS.
 ## Directory layout
 - user: Website with user's login, i.e., with an access control.
 - ext: Open website where Windows Wi-Fi Settings can download the profile from.
-- etc: Storage for configuration and certificate files. (Access restriction is necessary.)
+- etc: Storage for configuration and certificate files. **This directory must be set inaccessible from the internet.**
 
 ## Requirements
 Redis or compatible server is needed on the same host.
