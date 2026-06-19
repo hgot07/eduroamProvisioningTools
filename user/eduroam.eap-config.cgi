@@ -26,6 +26,8 @@
 #	+ per-user ExpirationDate
 # 20241030 Hideaki Goto (Tohoku University and eduroam JP)
 #	Update a reference. Add EAP-TLS support.
+# 20260620 Hideaki Goto (Tohoku University and eduroam JP)
+#	Drop legacy workaround using <Username>
 #
 
 use CGI;
@@ -177,7 +179,6 @@ $cert
         <ClientSideCredential>
           <OuterIdentity>$anonID</OuterIdentity>
           <UserName>$userID</UserName>
-          <Username>$userID</Username>
           <Password>$passwd</Password>
         </ClientSideCredential>
 ${InnerAuth}      </AuthenticationMethod>
