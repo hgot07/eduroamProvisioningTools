@@ -354,7 +354,7 @@ EOS
 
 print <<EOS;
 Content-Type: application/x-apple-aspen-config
-Content-Disposition: attachment; filename="passpoint.mobileconfig"
+Content-Disposition: attachment; filename="eduroam.mobileconfig"
 
 EOS
 
