@@ -28,62 +28,88 @@
 #	Update a reference. Add EAP-TLS support.
 # 20260620 Hideaki Goto (Tohoku University and eduroam JP)
 #	Drop legacy workaround using <Username>
+# 20260715 Hideaki Goto (Tohoku University and eduroam JP)
+#	Modernize.
 #
 
-use CGI;
+use strict;
+use warnings;
+use CGI::Cookie;
 use DateTime;
+use Digest::SHA qw(hmac_sha256 hmac_sha256_base64);
 use MIME::Base64;
-use Data::UUID;
+use Config::Tiny;
 
-
-#---- Configuration part ----
-
-# include common settings
-require '../etc/eduroam-common.cfg';
-
-#### Add your own code here to set ID/PW. ####
-#$userID = 'name@example.com';
-#$passwd = 'somePassword';
-
-# External code that sets $userID, $passwd, and optionally $ExpirationDate
+#require '../etc/check-login.pl';
 require '../etc/getuserinfo.pl';
-if ( &getuserinfo( $ENV{'REMOTE_USER'} ) ){ exit(1); }
 
-$uname = $anonID = $userID;
+my $time = time();
+
+my $webuser = $ENV{'REMOTE_USER'};
+
+my $config = Config::Tiny->read('../etc/config.ini');
+if ( ! defined $config ){
+print <<EOS;
+Content-Type: text/plain; charset=utf-8
+
+No configuration file found.
+EOS
+	exit(0);
+}
+
+my $SSID = $config->{default}->{SSID};
+my $AAAFQDN = $config->{default}->{AAAFQDN};
+my $CAfile = $config->{default}->{CAfile};
+my $cert = $config->{default}->{cert};
+my $HomeDomain = $config->{default}->{HomeDomain};
+my $friendlyName = $config->{default}->{friendlyName};
+
+my %userinfo = getuserinfo($webuser);
+my $userID = $userinfo{'userID'};
+if ( $userID eq '' ){ exit(1); }
+
+my $passwd = $userinfo{'passwd'};
+my $ExpirationDate = $userinfo{'ExpirationDate'};
+my $client_cert_np = $userinfo{'client_cert_np'};
+
+
+my $uname = $userID;
+my $anonID = $userID;
 $anonID =~ s/^.*@/anonymous@/;
 
-=pod	# EAP-TTLS with MSCHAPv2
-$EAPMethods = <<"EOS";
+# EAP-TTLS with PAP
+my $EAPMethods = <<"EOS";
         <EAPMethod>
           <Type>21</Type>
         </EAPMethod>
 EOS
-$InnerAuth = <<"EOS";
+my $InnerAuth = <<"EOS";
         <InnerAuthenticationMethod>
           <NonEAPAuthMethod>
-            <Type>3</Type>
+            <Type>1</Type>
           </NonEAPAuthMethod>
         </InnerAuthenticationMethod>
 EOS
-=cut
 
+=pod
 # PEAP
-$EAPMethods = <<"EOS";
+my $EAPMethods = <<"EOS";
         <EAPMethod>
           <Type>25</Type>
         </EAPMethod>
 EOS
-$InnerAuth = <<"EOS";
+my $InnerAuth = <<"EOS";
         <InnerAuthenticationMethod>
           <EAPMethod>
             <Type>26</Type>
           </EAPMethod>
         </InnerAuthenticationMethod>
 EOS
+=cut
 
 # EAP-TLS
 if ( $client_cert_np ){
-$EAPMethods = <<"EOS";
+my $EAPMethods = <<"EOS";
         <EAPMethod>
           <Type>13</Type>
         </EAPMethod>
@@ -98,15 +124,15 @@ $InnerAuth = '';
 # Fix certificate format
 chomp($client_cert_np);
 
-$ts=DateTime->now->datetime."Z";
+my $ts=DateTime->now->datetime."Z";
 
-$xml_Expire = '';
+my $xml_Expire = '';
 if ( $ExpirationDate ne '' ){
 	$xml_Expire = "    <ValidUntil>$ExpirationDate</ValidUntil>\n";
 }
 
-$RCOI =~ s/\s*//g;
-$xml_RCOI = '';
+my $RCOI =~ s/\s*//g;
+my $xml_RCOI = '';
 if ( $RCOI ne '' ){
 	my @ois = split(/,/, $RCOI);
 	for my $oi (@ois){
@@ -116,7 +142,7 @@ if ( $RCOI ne '' ){
 	}
 }
 
-$xml_cert = '';
+my $xml_cert = '';
 if ( $CAfile ne '' ){
 $cert = '';
 	open my $fh, '<', $CAfile;
@@ -131,6 +157,7 @@ $cert = '';
 }
 
 
+my $xml;
 if ( $client_cert_np ){
 
 $xml = <<"EOS";

@@ -20,33 +20,60 @@
 # 20230712 Hideaki Goto (Tohoku University and eduroam JP)
 # 20241117 Hideaki Goto (Tohoku University and eduroam JP)
 #	Add EAP-TLS support.
+# 20260715 Hideaki Goto (Tohoku University and eduroam JP)
+#	Modernize.
 #
 
-use CGI;
+use strict;
+use warnings;
+use CGI::Cookie;
 use DateTime;
+use Digest::SHA qw(hmac_sha256 hmac_sha256_base64);
 use MIME::Base64;
 use Data::UUID;
+use Config::Tiny;
 
-
-#---- Configuration part ----
-
-# include common settings
-require '../etc/eduroam-common.cfg';
-
-#### Add your own code here to set ID/PW. ####
-#$userID = 'name@example.com';
-#$passwd = 'somePassword';
-
-# External code that sets $userID, $passwd, and optionally $ExpirationDate
+#require '../etc/check-login.pl';
 require '../etc/getuserinfo.pl';
-if ( &getuserinfo( $ENV{'REMOTE_USER'} ) ){ exit(1); }
 
-$uname = $anonID = $userID;
+my $time = time();
+
+my $webuser = $ENV{'REMOTE_USER'};
+
+my $config = Config::Tiny->read('../etc/config.ini');
+if ( ! defined $config ){
+print <<EOS;
+Content-Type: text/plain; charset=utf-8
+
+No configuration file found.
+EOS
+	exit(0);
+}
+
+my $SSID = $config->{default}->{SSID};
+my $AAAFQDN = $config->{default}->{AAAFQDN};
+my $CAfile = $config->{default}->{CAfile};
+my $cert = $config->{default}->{cert};
+my $HomeDomain = $config->{default}->{HomeDomain};
+my $friendlyName = $config->{default}->{friendlyName};
+
+my %userinfo = getuserinfo($webuser);
+my $userID = $userinfo{'userID'};
+if ( $userID eq '' ){ exit(1); }
+
+my $passwd = $userinfo{'passwd'};
+my $ExpirationDate = $userinfo{'ExpirationDate'};
+my $client_cert_np = $userinfo{'client_cert_np'};
+
+
+my $uname = $userID;
+my $anonID = $userID;
 $anonID =~ s/^.*\@/anonymous@/;
 
-$InnerMethod = "MSCHAPv2";
-$OuterMethod = "PEAP";
-#$OuterMethod = "EAP-TTLS";
+#$InnerMethod = "MSCHAPv2";
+#$OuterMethod = "PEAP";
+my $InnerMethod = "PAP";
+my $OuterMethod = "EAP-TTLS";
 
 
 #---- Profile composition part ----
@@ -58,7 +85,7 @@ $client_cert_np =~ s/[\r\n]//g;
 $client_cert_np =~ s/\//\\\//g;
 $client_cert_np =~ s/\s+//g;
 
-$ts=DateTime->now->datetime."Z";
+my $ts=DateTime->now->datetime."Z";
 
 my $uuid1 = Data::UUID->new->create_str();
 $uuid1 = uc $uuid1;
@@ -67,7 +94,7 @@ $uuid_s = uc $uuid_s;
 my $uuid_c = Data::UUID->new->create_str();
 $uuid_c = uc $uuid_c;
 
-$xml_cert = '';
+my $xml_cert = '';
 if ( $CAfile ne '' ){
 $cert = '';
 	open my $fh, '<', $CAfile;
@@ -83,6 +110,7 @@ $cert = '';
 }
 
 
+my $xml;
 if ( $client_cert_np ){
 
 $xml = <<"EOS";

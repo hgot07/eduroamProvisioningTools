@@ -35,29 +35,65 @@
 #	Renamed
 # 20241031 Hideaki Goto (Tohoku University and eduroam JP)
 #	Add EAP-TLS support.
+# 20260715 Hideaki Goto (Tohoku University and eduroam JP)
+#	Modernize.
 #
 
-use CGI;
+use strict;
+use warnings;
+use CGI::Cookie;
 use DateTime;
+use Digest::SHA qw(hmac_sha256 hmac_sha256_base64);
 use MIME::Base64;
 use Data::UUID;
+use Config::Tiny;
 
-
-#---- Configuration part ----
-
-# include common settings
-require '../etc/eduroam-common.cfg';
-
-#### Add your own code here to set ID/PW. ####
-#$userID = 'name@example.com';
-#$passwd = 'somePassword';
-
-# External code that sets $userID, $passwd,
-#   and optionally $ExpirationDate, $client_cert, etc.
+#require '../etc/check-login.pl';
 require '../etc/getuserinfo.pl';
-if ( &getuserinfo( $ENV{'REMOTE_USER'} ) ){ exit(1); }
 
-$uname = $anonID = $userID;
+my $time = time();
+
+my $webuser = $ENV{'REMOTE_USER'};
+
+my $config = Config::Tiny->read('../etc/config.ini');
+if ( ! defined $config ){
+print <<EOS;
+Content-Type: text/plain; charset=utf-8
+
+No configuration file found.
+EOS
+	exit(0);
+}
+
+my $SSID = $config->{default}->{SSID};
+my $AAAFQDN = $config->{default}->{AAAFQDN};
+my $CAfile = $config->{default}->{CAfile};
+my $ICAfile = $config->{default}->{ICAfile};
+my $ICAcertname = $config->{default}->{ICAcertname};
+my $PLID = $config->{default}->{PLID};
+my $PLuuid = $config->{default}->{PLuuid};
+$PLuuid= uc $PLuuid;	# make sure upper case
+my $PayloadDisplayName = $config->{default}->{PayloadDisplayName};
+my $cert = $config->{default}->{cert};
+my $HomeDomain = $config->{default}->{HomeDomain};
+my $friendlyName = $config->{default}->{friendlyName};
+my $description = $config->{default}->{description};
+my $signercert = $config->{default}->{signercert};
+my $signerchain = $config->{default}->{signerchain};
+my $signerkey = $config->{default}->{signerkey};
+
+my %userinfo = getuserinfo($webuser);
+my $userID = $userinfo{'userID'};
+if ( $userID eq '' ){ exit(1); }
+
+my $passwd = $userinfo{'passwd'};
+my $ExpirationDate = $userinfo{'ExpirationDate'};
+my $client_cert = $userinfo{'client_cert'};
+my $client_cert_pass = $userinfo{'client_cert_pass'};
+
+
+my $uname = $userID;
+my $anonID = $userID;
 $anonID =~ s/^.*@/anonymous@/;
 
 # To omit signing, uncomment this.
@@ -69,9 +105,12 @@ $anonID =~ s/^.*@/anonymous@/;
 # (no need to edit below, hopefully)
 
 # Fix certificate format
+if ( !defined $client_cert ){
+	$client_cert = '';
+}
 chomp($client_cert);
 
-$ts=DateTime->now->datetime."Z";
+my $ts=DateTime->now->datetime."Z";
 
 my $uuid1 = Data::UUID->new->create_str();
 $uuid1 = uc $uuid1;
@@ -80,7 +119,7 @@ $uuid2 = uc $uuid2;
 my $cert_uuid = Data::UUID->new->create_str();
 $cert_uuid = uc $cert_uuid;
 
-$xml_Expire = '';
+my $xml_Expire = '';
 if ( $ExpirationDate ne '' ){
 $xml_Expire = <<"EOS";
 	<key>RemovalDate</key>
@@ -88,10 +127,10 @@ $xml_Expire = <<"EOS";
 EOS
 }
 
-$xml_anchor = '';
-$xml_cert = '';
+my $xml_anchor = '';
+my $xml_cert = '';
 if ( $ICAfile ne '' ){
-$cert = '';
+my $cert = '';
 	open my $fh, '<', $ICAfile;
 	while(<$fh>){
 		if ( $_ =~ /BEGIN\s+CERTIFICATE/ ){ next; }
@@ -129,6 +168,7 @@ $xml_cert = <<"EOS";
 EOS
 }
 
+my $xmltext;
 if ( $client_cert ){
 
 $xmltext = <<"EOS";
@@ -168,7 +208,7 @@ ${xml_Expire}	<key>PayloadContent</key>
 					<string>$AAAFQDN</string>
 				</array>
 ${xml_anchor}				<key>TTLSInnerAuthentication</key>
-				<string>MSCHAPv2</string>
+				<string>PAP</string>
 				<key>TLSCertificateIsRequired</key>
 				<true/>
 				<key>TLSMaximumVersion</key>
@@ -273,7 +313,7 @@ ${xml_Expire}	<key>PayloadContent</key>
 					<string>$AAAFQDN</string>
 				</array>
 ${xml_anchor}				<key>TTLSInnerAuthentication</key>
-				<string>MSCHAPv2</string>
+				<string>PAP</string>
 				<key>UserName</key>
 				<string>$uname</string>
 				<key>UserPassword</key>
@@ -322,14 +362,15 @@ if ( $signercert eq '' ){
 	print $xmltext;
 }
 else{
+	my $fh;
 	if ( $signerchain eq '' ){
-		open(fh, "| openssl smime -sign -nodetach -signer $signercert -inkey $signerkey -outform der");
+		open($fh, "| openssl smime -sign -nodetach -signer $signercert -inkey $signerkey -outform der");
 	}
 	else{
-		open(fh, "| openssl smime -sign -nodetach -certfile ../etc/chain.pem -signer $signercert -inkey $signerkey -outform der");
+		open($fh, "| openssl smime -sign -nodetach -certfile ../etc/chain.pem -signer $signercert -inkey $signerkey -outform der");
 	}
-	print fh $xmltext;
-	close(fh);
+	print $fh $xmltext;
+	close($fh);
 }
 
 exit(0);

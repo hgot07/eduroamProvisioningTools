@@ -15,10 +15,16 @@ Only EAP-TTLS and EAP-TLS are supported. Some OSs may not support EAP-TLS.
 - etc: Storage for configuration and certificate files. **This directory must be set inaccessible from the internet.**
 
 ## Requirements
-Redis or compatible server is needed on the same host.
+~~Redis or compatible server is needed on the same host.~~  
 
 CGI scripts require execution handler,
  e.g. "AddHandler cgi-script .cgi .config" in case of Apache2 web server.
+
+## Important changes since 20260715 revision
+- Scripts have been re-written in modern perl style.
+- Configuration file has been changed to etc/config.ini .
+- Redis is no longer required.
+- Some scripts have been renamed.
 
 ## About WPA2/WPA3 compatibility
 These tools are compatible with WPA3. Even if you see a WPA2 string in the profiles, it allows Apple and Microsoft devices to join either WPA2 and WPA3 networks. 

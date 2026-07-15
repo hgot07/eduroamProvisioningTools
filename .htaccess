@@ -1,4 +1,3 @@
 DirectoryIndex index.html
 Options +ExecCGI -Includes
-AddHandler cgi-script .cgi .config .mobileconfig
-SSLOptions +StdEnvVars
+AddHandler cgi-script .cgi
