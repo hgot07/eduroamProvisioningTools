@@ -1,0 +1,372 @@
+#!/usr/bin/perl
+#
+# eduroam Provisioning Tools
+#  Simple CGI script for eduroam profile provisioning
+#  Target: Windows 11
+# 
+# Usage:
+#  - Customize the configuration part below.
+#  - Put this script on a web server as a CGI program.
+#    (Please refer to the HTTP server's manual for configuring CGI.)
+#  - Access the script using the ms-settings:wifi-provisioning?uri= scheme.
+#    <a href="ms-settings:wifi-provisioning?uri=https://<path_to_script>/eduroam-win.cgi"> ... </a>
+# Notes:
+#  - Only EAP-TTLS is supported.
+#  - Windows 10 requires a profile signed by an EV certificate.
+#  - The key and certificate files for signing need to be accessible
+#    from the process group such as "www". (chgrp & chmod o+r)
+#  - This script may not work in a restricted website such as the one
+#    protected by the Basic Authentication. A non-browser process requires
+#    access. (see also the helper win-helper.cgi)
+# References:
+#  https://docs.microsoft.com/en-us/windows-hardware/drivers/mobilebroadband/account-provisioning
+#  https://docs.microsoft.com/en-us/windows-hardware/drivers/mobilebroadband/update-the-hotspot-authentication-sample
+#  https://docs.microsoft.com/en-us/windows/win32/nativewifi/wlan-profileschema-elements
+#  https://docs.microsoft.com/en-us/windows/uwp/launch-resume/launch-settings-app
+#  https://learn.microsoft.com/en-us/windows-hardware/drivers/mobilebroadband/passpoint
+#
+# 20220731 Hideaki Goto (Tohoku University and eduroam JP)
+# 20220812 Hideaki Goto (Tohoku University and eduroam JP)
+#	+ XML signer in Perl
+# 20230524 Hideaki Goto (Tohoku University and eduroam JP)
+#	Fixed SHA1 function usage.
+# 20231222 Hideaki Goto (Tohoku University and eduroam JP)
+#	Added Passpoint mode for Windows.
+# 20240315 Hideaki Goto (Tohoku University and eduroam JP)
+#	Use MSCHAPv2, not MSCHAP.
+# 20240703 Hideaki Goto (Tohoku University and eduroam JP)
+#	Add a reference.
+# 20260413 Hideaki Goto (Tohoku University and eduroam JP)
+#	Switch the hashing algorithms in signing to SHA256 from SHA1.
+#	(Drop Windows 10 support.)
+# 20260507 Hideaki Goto (Tohoku University and eduroam JP)
+#	Add workaround for xmlsec1 failing to read from stdin.
+# 20260715 Hideaki Goto (Tohoku University and eduroam JP)
+#	Modernize.
+#
+
+my $use_xmlsec1 = 'true';	# use external command xmlsec1 to sign the profile
+$use_xmlsec1 = 'false';
+
+use strict;
+use warnings;
+use CGI;
+use CGI::Cookie;
+use Digest::SHA qw(sha256 hmac_sha256 hmac_sha256_base64);
+use MIME::Base64;
+use MIME::Base64::URLSafe;
+use XML::Compile::C14N;
+use XML::Compile::C14N::Util ':c14n';
+use XML::LibXML;
+use Crypt::CBC;
+use Crypt::OpenSSL::RSA;
+use Crypt::Cipher::AES;
+use Config::Tiny;
+use DateTime;
+
+$CGI::POST_MAX = 1024;
+my $q = CGI->new();
+my $ukey = $q->param('ukey');
+
+#require '../etc/check-login.pl';
+require '../etc/getuserinfo.pl';
+
+my $time = time();
+
+if ( ! defined $ukey ){
+print <<EOS;
+Content-Type: text/plain; charset=utf-8
+
+No user key provided.
+EOS
+	exit 0;
+}
+
+
+# CHANGE ME
+my $ukey_pass = '4BQkGpgtc217OleZt7Gs9rSaVz7H0yDy';
+
+my $cipher = Crypt::CBC->new(
+	-key	=> $ukey_pass,
+	-cipher	=> 'Cipher::AES',
+	-pbkdf	=> 'pbkdf2',
+);
+
+my $user_mac = $cipher->decrypt( urlsafe_b64decode($ukey) );
+my ($webuser, $mac) = split(/:/, $user_mac);
+
+if ( !defined $mac ){
+	$mac = '';
+}
+if ( $mac ne hmac_sha256_base64($webuser, $ukey_pass) ){
+print <<EOS;
+Content-Type: text/plain; charset=utf-8
+
+Invalid user key.
+EOS
+	exit 0;
+}
+
+
+my $config = Config::Tiny->read('../etc/config.ini');
+if ( ! defined $config ){
+print <<EOS;
+Content-Type: text/plain; charset=utf-8
+
+No configuration file found.
+EOS
+	exit(0);
+}
+
+my $SSID = $config->{default}->{SSID};
+my $AAAFQDN = $config->{default}->{AAAFQDN};
+my $CAfile = $config->{default}->{CAfile};
+my $cert = $config->{default}->{cert};
+my $HomeDomain = $config->{default}->{HomeDomain};
+my $friendlyName = $config->{default}->{friendlyName};
+my $RCOI = $config->{default}->{RCOI};
+my $CarrierId = $config->{default}->{CarrierId};
+$CarrierId = lc $CarrierId;
+my $SubscriberId = $config->{default}->{SubscriberId};
+my $TrustedRootCAHash = $config->{default}->{TrustedRootCAHash};
+$TrustedRootCAHash =~ s/:/ /g;
+$TrustedRootCAHash = lc $TrustedRootCAHash;
+my $CAfile_win = $config->{default}->{CAfile_win};
+my $signercertpfx = $config->{default}->{signercertpfx};
+my $signercert = $config->{default}->{signercert};
+my $pfxpasswd = $config->{default}->{pfxpasswd};
+my $signerkey = $config->{default}->{signerkey};
+
+my %userinfo = getuserinfo($webuser);
+my $userID = $userinfo{'userID'};
+my $passwd = $userinfo{'passwd'};
+my $ExpirationDate = $userinfo{'ExpirationDate'};
+my $NAIrealm = $userinfo{'NAIrealm'};
+
+
+my $uname = $userID;
+my $anonID = $userID;
+$anonID =~ s/^.*@/anonymous@/;	# outer identity
+
+
+#---- Profile composition part ----
+# (no need to edit below, hopefully)
+
+my $xml_SSID = '';
+if ( $SSID ne '' ){
+$xml_SSID = << "EOS";
+      <SSIDConfig>
+        <SSID>
+          <name>$SSID</name>
+        </SSID>
+      </SSIDConfig>
+EOS
+}
+
+$RCOI =~ s/\s*//g;
+my $xml = '';
+my $xml_HS20 = '';
+if ( $RCOI ne '' ){
+	$RCOI = lc $RCOI;
+	my @ois = split(/,/, $RCOI);
+$xml_HS20 = << "EOS";
+      <Hotspot2>
+        <DomainName>$HomeDomain</DomainName>
+        <NAIRealm>
+          <name>$NAIrealm</name>
+        </NAIRealm>
+        <RoamingConsortium>
+EOS
+	for my $oi (@ois){
+		$xml_HS20 .= "          <OUI>$oi</OUI>\n";
+	}
+	$xml_HS20 .= "        </RoamingConsortium>\n      </Hotspot2>\n";
+}
+
+
+$xml = <<"EOS";
+<CarrierProvisioning xmlns="http://www.microsoft.com/networking/CarrierControl/v1" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Global>
+    <CarrierId>{$CarrierId}</CarrierId>
+    <SubscriberId>$SubscriberId</SubscriberId>
+  </Global>
+  <WLANProfiles>
+    <WLANProfile xmlns="http://www.microsoft.com/networking/CarrierControl/WLAN/v1">
+      <name>$friendlyName</name>
+${xml_SSID}${xml_HS20}      <MSM>
+        <security>
+          <authEncryption>
+            <authentication>WPA2</authentication>
+            <encryption>AES</encryption>
+            <useOneX>true</useOneX>
+          </authEncryption>
+          <OneX xmlns="http://www.microsoft.com/networking/OneX/v1">
+            <authMode>user</authMode>
+            <EAPConfig>
+              <EapHostConfig xmlns="http://www.microsoft.com/provisioning/EapHostConfig">
+                <EapMethod>
+                  <Type xmlns="http://www.microsoft.com/provisioning/EapCommon">21</Type>
+                  <VendorId xmlns="http://www.microsoft.com/provisioning/EapCommon">0</VendorId>
+                  <VendorType xmlns="http://www.microsoft.com/provisioning/EapCommon">0</VendorType>
+                  <AuthorId xmlns="http://www.microsoft.com/provisioning/EapCommon">311</AuthorId>
+                </EapMethod>
+                <Config>
+                  <EapTtls xmlns="http://www.microsoft.com/provisioning/EapTtlsConnectionPropertiesV1">
+                    <ServerValidation>
+                      <DisableUserPromptForServerValidation>false</DisableUserPromptForServerValidation>
+                      <ServerNames>$AAAFQDN</ServerNames>
+                      <TrustedRootCAHash>$TrustedRootCAHash</TrustedRootCAHash>
+                      <DisablePrompt>false</DisablePrompt>
+                    </ServerValidation>
+                    <Phase2Authentication>
+                      <PAPAuthentication/>
+                    </Phase2Authentication>
+                    <Phase1Identity>
+                      <IdentityPrivacy>true</IdentityPrivacy>
+                      <AnonymousIdentity>$anonID</AnonymousIdentity>
+                    </Phase1Identity>
+                  </EapTtls>
+                </Config>
+              </EapHostConfig>
+            </EAPConfig>
+          </OneX>
+          <EapHostUserCredentials xmlns="http://www.microsoft.com/provisioning/EapHostUserCredentials" xmlns:baseEap="http://www.microsoft.com/provisioning/BaseEapMethodUserCredentials" xmlns:eapCommon="http://www.microsoft.com/provisioning/EapCommon">
+            <EapMethod>
+              <eapCommon:Type>21</eapCommon:Type>
+              <eapCommon:AuthorId>311</eapCommon:AuthorId>
+            </EapMethod>
+            <Credentials>
+              <EapTtls xmlns="http://www.microsoft.com/provisioning/EapTtlsUserPropertiesV1">
+                <Username>$userID</Username>
+                <Password>$passwd</Password>
+              </EapTtls>
+            </Credentials>
+          </EapHostUserCredentials>
+        </security>
+      </MSM>
+    </WLANProfile>
+  </WLANProfiles>
+</CarrierProvisioning>
+EOS
+
+
+# Signing by xmlsec1 command.
+
+if ( $use_xmlsec1 !~ /false/i ){
+	chomp $xml;
+	$xml =~ s/<\/CarrierProvisioning>//;
+	$xml .= <<"EOS";
+<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"><SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#"><CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" /><SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" /><Reference URI=""><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" /></Transforms><DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" /><DigestValue></DigestValue></Reference></SignedInfo><SignatureValue></SignatureValue><KeyInfo><X509Data><X509Certificate></X509Certificate></X509Data></KeyInfo></Signature></CarrierProvisioning>
+EOS
+	my $cmdopt = "";
+	if ( $CAfile_win ne '' ){
+		$cmdopt .= "--trusted-pem $CAfile_win";
+	}
+
+print <<EOS;
+Content-Type: text/xml
+Content-Disposition: attachment; filename="wifi-config.xml"
+
+EOS
+
+my $fh;
+#	open($fh, "| xmlsec1 --sign --pkcs12 $signercertpfx --pwd \"$pfxpasswd\" $cmdopt -");
+	open($fh, "| xmlsec1 --sign --pkcs12 $signercertpfx --pwd \"$pfxpasswd\" $cmdopt /dev/stdin");
+	print $fh $xml;
+	close($fh);
+
+	exit(0);
+}
+
+
+# Perl version of signing below.
+
+my $c14n   = XML::Compile::C14N->new(type => '1.0');
+
+chomp $xml;
+my $xml1 = $xml;
+$xml1 =~ s/<\/CarrierProvisioning>//;
+my $xml2 = '</CarrierProvisioning>';
+
+my $parser = XML::LibXML->new();
+my $dom = $parser->parse_string($xml);
+
+my $cano = $c14n->normalize(C14N_v10_NO_COMM, $dom);
+
+my $digest = sha256($cano);
+my $dgstb64 = encode_base64($digest);
+chomp $dgstb64;
+
+
+# command line example:
+# openssl dgst -sha256 -sign private-key.pem si_cano_c14n.xml|base64
+
+# See: https://www.di-mgt.com.au/xmldsig.html
+#  Form the canonicalized <SignedInfo> element. 
+#  Note the xmlns attribute which we include here, 
+#  but not in the final document. 
+#  This is propagated down from the parent <Signature> element. 
+
+my $si = <<"EOS";
+<CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" /><SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" /><Reference URI=""><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" /></Transforms><DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" /><DigestValue>$dgstb64</DigestValue></Reference></SignedInfo>
+EOS
+
+$si =~ s/\s*//;
+$si =~ s/\s*$//;
+$si =~ s/\s*\d?\n\s*//g;
+# also chomp-ed
+
+my $si_out = '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">'.$si;
+$si = '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'.$si;
+
+$dom = $parser->parse_string($si);
+my $si_cano = $c14n->normalize(C14N_v10_NO_COMM, $dom);
+
+
+my $privkey = '';
+open(my $fh, '<', $signerkey);
+while(<$fh>){$privkey .= $_}
+close($fh);
+my $rsa_privkey = Crypt::OpenSSL::RSA->new_private_key($privkey);
+$rsa_privkey->use_sha256_hash();
+my $sign = $rsa_privkey->sign($si_cano);
+
+my $sigval = encode_base64($sign, "");
+chomp $sigval;
+
+
+# read signer cert.
+
+my $cert1 = '';
+if ($signercert ne ''){
+	open(my $fh, '<', $signercert) or last;
+	while(<$fh>){$cert1 .= $_}
+	close($fh);
+}
+if ($CAfile_win ne ''){
+	open(my $fh, '<', $CAfile_win) or last;
+	while(<$fh>){$cert1 .= $_}
+	close($fh);
+}
+$cert1 =~ s/\-\-\-\-\-BEGIN\s+CERTIFICATE\-\-\-\-\-\n/<X509Certificate>/g;
+$cert1 =~ s/\n\-\-\-\-\-END\s+CERTIFICATE\-\-\-\-\-\n/<\/X509Certificate>/g;
+chomp $cert1;
+
+
+# form Signature block
+
+my $signature = <<"EOS";
+<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">$si_out<SignatureValue>$sigval</SignatureValue><KeyInfo><X509Data>$cert1</X509Data></KeyInfo></Signature>
+EOS
+chomp $signature;
+
+print <<"EOS";
+Content-Type: text/xml
+Content-Disposition: attachment; filename="eduroam.xml"
+
+EOS
+
+print "<?xml version=\"1.0\"?>\n";
+print "$xml1$signature$xml2\n";
+
+exit(0);
