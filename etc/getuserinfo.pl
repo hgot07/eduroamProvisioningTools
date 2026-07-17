@@ -15,6 +15,11 @@ sub getuserinfo {
 	$userinfo{'passwd'} = 'nicePassword';
 	$userinfo{'ExpirationDate'} = '2023-01-05T00:00:00Z';
 
+	# Override the default parameters defined in config.ini
+	#$userinfo{'friendlyName'} = '';
+	#$userinfo{'PayloadDisplayName'} = '';
+	#$userinfo{'NAIrealm'} = 'example.com';
+
 
 	# The scripts issue EAP-TLS profiles 
 	#  when client_cert(_np) is non-empty.

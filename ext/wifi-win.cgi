@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
-# eduroam Provisioning Tools
-#  Simple CGI script for eduroam profile provisioning
+# Wi-Fi Provisioning Tools
+#  Simple CGI script for Wi-Fi provisioning
 #  Target: Windows 11
 # 
 # Usage:
@@ -9,9 +9,9 @@
 #  - Put this script on a web server as a CGI program.
 #    (Please refer to the HTTP server's manual for configuring CGI.)
 #  - Access the script using the ms-settings:wifi-provisioning?uri= scheme.
-#    <a href="ms-settings:wifi-provisioning?uri=https://<path_to_script>/eduroam-win.cgi"> ... </a>
+#    <a href="ms-settings:wifi-provisioning?uri=https://<path_to_script>/wifi-win.cgi"> ... </a>
 # Notes:
-#  - Only EAP-TTLS is supported.
+#  - ms-settings: URI scheme supports only EAP-TTLS as of 25H2.
 #  - Windows 10 requires a profile signed by an EV certificate.
 #  - The key and certificate files for signing need to be accessible
 #    from the process group such as "www". (chgrp & chmod o+r)
@@ -24,7 +24,9 @@
 #  https://docs.microsoft.com/en-us/windows/win32/nativewifi/wlan-profileschema-elements
 #  https://docs.microsoft.com/en-us/windows/uwp/launch-resume/launch-settings-app
 #  https://learn.microsoft.com/en-us/windows-hardware/drivers/mobilebroadband/passpoint
+#  https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-gpwl/723ffda5-9bef-40cc-81dc-3ede33fd90b2
 #
+# 20220729 Hideaki Goto (Cityroam/eduroam)
 # 20220731 Hideaki Goto (Tohoku University and eduroam JP)
 # 20220812 Hideaki Goto (Tohoku University and eduroam JP)
 #	+ XML signer in Perl
@@ -43,6 +45,8 @@
 #	Add workaround for xmlsec1 failing to read from stdin.
 # 20260715 Hideaki Goto (Tohoku University and eduroam JP)
 #	Modernize.
+# 20260717 Hideaki Goto (Tohoku University and eduroam JP)
+#	Ease configuration. Some fixes and feature extentions.
 #
 
 my $use_xmlsec1 = 'true';	# use external command xmlsec1 to sign the profile
@@ -82,9 +86,17 @@ EOS
 	exit 0;
 }
 
+my $config = Config::Tiny->read('../etc/config.ini');
+if ( ! defined $config ){
+print <<EOS;
+Content-Type: text/plain; charset=utf-8
 
-# CHANGE ME
-my $ukey_pass = '4BQkGpgtc217OleZt7Gs9rSaVz7H0yDy';
+No configuration file found.
+EOS
+	exit(0);
+}
+
+my $ukey_pass = $config->{default}->{HelperSecret};
 
 my $cipher = Crypt::CBC->new(
 	-key	=> $ukey_pass,
@@ -108,20 +120,11 @@ EOS
 }
 
 
-my $config = Config::Tiny->read('../etc/config.ini');
-if ( ! defined $config ){
-print <<EOS;
-Content-Type: text/plain; charset=utf-8
-
-No configuration file found.
-EOS
-	exit(0);
-}
-
 my $SSID = $config->{default}->{SSID};
 my $AAAFQDN = $config->{default}->{AAAFQDN};
 my $CAfile = $config->{default}->{CAfile};
 my $cert = $config->{default}->{cert};
+my $Passpoint = $config->{default}->{Passpoint};
 my $HomeDomain = $config->{default}->{HomeDomain};
 my $friendlyName = $config->{default}->{friendlyName};
 my $RCOI = $config->{default}->{RCOI};
@@ -136,12 +139,18 @@ my $signercertpfx = $config->{default}->{signercertpfx};
 my $signercert = $config->{default}->{signercert};
 my $pfxpasswd = $config->{default}->{pfxpasswd};
 my $signerkey = $config->{default}->{signerkey};
+my $NAIrealm = $config->{default}->{NAIrealm};
 
 my %userinfo = getuserinfo($webuser);
 my $userID = $userinfo{'userID'};
 my $passwd = $userinfo{'passwd'};
 my $ExpirationDate = $userinfo{'ExpirationDate'};
-my $NAIrealm = $userinfo{'NAIrealm'};
+if ( $userinfo{'NAIrealm'} ){
+	$NAIrealm = $userinfo{'NAIrealm'};
+}
+if ( $userinfo{'friendlyName'} ){
+	$friendlyName = $userinfo{'friendlyName'};
+}
 
 
 my $uname = $userID;
@@ -166,9 +175,7 @@ EOS
 $RCOI =~ s/\s*//g;
 my $xml = '';
 my $xml_HS20 = '';
-if ( $RCOI ne '' ){
-	$RCOI = lc $RCOI;
-	my @ois = split(/,/, $RCOI);
+if ( $Passpoint ){
 $xml_HS20 = << "EOS";
       <Hotspot2>
         <DomainName>$HomeDomain</DomainName>
@@ -177,8 +184,12 @@ $xml_HS20 = << "EOS";
         </NAIRealm>
         <RoamingConsortium>
 EOS
-	for my $oi (@ois){
-		$xml_HS20 .= "          <OUI>$oi</OUI>\n";
+	if ( $RCOI ne '' ){
+		$RCOI = lc $RCOI;
+		my @ois = split(/,/, $RCOI);
+		for my $oi (@ois){
+			$xml_HS20 .= "          <OUI>$oi</OUI>\n";
+		}
 	}
 	$xml_HS20 .= "        </RoamingConsortium>\n      </Hotspot2>\n";
 }
@@ -362,7 +373,7 @@ chomp $signature;
 
 print <<"EOS";
 Content-Type: text/xml
-Content-Disposition: attachment; filename="eduroam.xml"
+Content-Disposition: attachment; filename="wifi-config.xml"
 
 EOS
 

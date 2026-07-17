@@ -1,15 +1,15 @@
 #!/usr/bin/perl
 #
-# eduroam Provisioning Tools
-#  Simple CGI script for eduroam profile provisioning
+# Wi-Fi Provisioning Tools
+#  Simple CGI script for Wi-Fi provisioning
 #  Target: All OS
 # 
 # Usage:
 #  - Customize the configuration part below and the external file
-#    etc/eduroam-common.cfg.
+#    etc/config.ini.
 #  - Put this script on a web server as a CGI program.
 #    (Please refer to the HTTP server's manual for configuring CGI.)
-#  - Access https://<path_to_script>/eduroam.eap-config.cgi.
+#  - Access https://<path_to_script>/wifi.eap-config.cgi.
 # Notes:
 #  -
 # References:
@@ -30,6 +30,8 @@
 #	Drop legacy workaround using <Username>
 # 20260715 Hideaki Goto (Tohoku University and eduroam JP)
 #	Modernize.
+# 20260717 Hideaki Goto (Tohoku University and eduroam JP)
+#	Fix EAP-TLS and Passpoint. Some fixes and feature extentions.
 #
 
 use strict;
@@ -57,12 +59,16 @@ EOS
 	exit(0);
 }
 
+my $FileName = $config->{default}->{FileName};
 my $SSID = $config->{default}->{SSID};
 my $AAAFQDN = $config->{default}->{AAAFQDN};
 my $CAfile = $config->{default}->{CAfile};
 my $cert = $config->{default}->{cert};
+my $Passpoint = $config->{default}->{Passpoint};
 my $HomeDomain = $config->{default}->{HomeDomain};
 my $friendlyName = $config->{default}->{friendlyName};
+my $RCOI = $config->{default}->{RCOI};
+my $NAIrealm = $config->{default}->{NAIrealm};
 
 my %userinfo = getuserinfo($webuser);
 my $userID = $userinfo{'userID'};
@@ -71,6 +77,12 @@ if ( $userID eq '' ){ exit(1); }
 my $passwd = $userinfo{'passwd'};
 my $ExpirationDate = $userinfo{'ExpirationDate'};
 my $client_cert_np = $userinfo{'client_cert_np'};
+if ( $userinfo{'NAIrealm'} ){
+	$NAIrealm = $userinfo{'NAIrealm'};
+}
+if ( $userinfo{'friendlyName'} ){
+	$friendlyName = $userinfo{'friendlyName'};
+}
 
 
 my $uname = $userID;
@@ -131,14 +143,23 @@ if ( $ExpirationDate ne '' ){
 	$xml_Expire = "    <ValidUntil>$ExpirationDate</ValidUntil>\n";
 }
 
-my $RCOI =~ s/\s*//g;
-my $xml_RCOI = '';
-if ( $RCOI ne '' ){
-	my @ois = split(/,/, $RCOI);
-	for my $oi (@ois){
-		$xml_RCOI .= "      <IEEE80211>\n";
-		$xml_RCOI .= "        <ConsortiumOID>$oi</ConsortiumOID>\n";
-		$xml_RCOI .= "      </IEEE80211>\n";
+$RCOI =~ s/\s*//g;
+my $xml_SSID = <<"EOS";
+      <IEEE80211>
+        <SSID>$SSID</SSID>
+        <MinRSNProto>CCMP</MinRSNProto>
+      </IEEE80211>
+EOS
+my $xml_HS20 = '';
+if ( $Passpoint ){
+	$xml_SSID = '';
+	if ( $RCOI ne '' ){
+		my @ois = split(/,/, $RCOI);
+		for my $oi (@ois){
+			$xml_HS20 .= "      <IEEE80211>\n";
+			$xml_HS20 .= "        <ConsortiumOID>$oi</ConsortiumOID>\n";
+			$xml_HS20 .= "      </IEEE80211>\n";
+		}
 	}
 }
 
@@ -179,7 +200,7 @@ $cert
 ${InnerAuth}      </AuthenticationMethod>
     </AuthenticationMethods>
     <CredentialApplicability>
-${xml_RCOI}    </CredentialApplicability>
+${xml_SSID}${xml_HS20}    </CredentialApplicability>
     <ProviderInfo>
       <DisplayName>$friendlyName</DisplayName>
       <Helpdesk/>
@@ -211,11 +232,7 @@ $cert
 ${InnerAuth}      </AuthenticationMethod>
     </AuthenticationMethods>
     <CredentialApplicability>
-      <IEEE80211>
-        <SSID>$SSID</SSID>
-        <MinRSNProto>CCMP</MinRSNProto>
-      </IEEE80211>
-${xml_RCOI}    </CredentialApplicability>
+${xml_SSID}${xml_HS20}    </CredentialApplicability>
     <ProviderInfo>
       <DisplayName>$friendlyName</DisplayName>
       <Helpdesk/>
@@ -230,11 +247,9 @@ chomp $xml;
 
 print <<"EOS";
 Content-Type: application/eap-config
-Content-Disposition: attachment; filename="eduroam.eap-config"
+Content-Disposition: attachment; filename="$FileName.eap-config"
 
 $xml
 EOS
 
 exit(0);
-
-

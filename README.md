@@ -25,8 +25,7 @@ CGI scripts require execution handler,
 - Configuration file has been changed to etc/config.ini .
 - Redis is no longer required.
 - Some scripts have been renamed.
-- **Please make sure changing the random value $ukey_pass in 
-user/win-helper.cgi and ext/eduroam-win.cgi .**
+- **Please make sure changing HelperSecret in config.ini .**
 
 ## About WPA2/WPA3 compatibility
 These tools are compatible with WPA3. Even if you see a WPA2 string in the profiles, it allows Apple and Microsoft devices to join either WPA2 and WPA3 networks. 

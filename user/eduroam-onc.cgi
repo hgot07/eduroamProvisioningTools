@@ -1,18 +1,18 @@
 #!/usr/bin/perl
 #
 # eduroam Provisioning Tools
-#  Simple CGI script for eduroam profile provisioning
+#  Simple CGI script for Wi-Fi provisioning
 #  Target: ChromeOS
 # 
 # Usage:
 #  - Customize the configuration part below and the external file
-#    etc/eduroam-common.cfg.
+#    etc/config.ini.
 #  - Put this script on a web server as a CGI program.
 #    (Please refer to the HTTP server's manual for configuring CGI.)
 #  - Access https://<path_to_script>/eduroam-onc.cgi.
 # Notes:
 #  - User needs to open chrome://network on Chrome browser and load
-#    the downloaded eduroam-config.onc file manually.
+#    the downloaded wifi-config.onc file manually.
 # References:
 #  - Open Network Configuration
 #    https://chromium.googlesource.com/chromium/src/+/main/components/onc/docs/onc_spec.md
@@ -22,6 +22,8 @@
 #	Add EAP-TLS support.
 # 20260715 Hideaki Goto (Tohoku University and eduroam JP)
 #	Modernize.
+# 20260717 Hideaki Goto (Tohoku University and eduroam JP)
+#	Some fixes and feature extentions.
 #
 
 use strict;
@@ -50,12 +52,12 @@ EOS
 	exit(0);
 }
 
+my $FileName = $config->{default}->{FileName};
 my $SSID = $config->{default}->{SSID};
 my $AAAFQDN = $config->{default}->{AAAFQDN};
 my $CAfile = $config->{default}->{CAfile};
 my $cert = $config->{default}->{cert};
 my $HomeDomain = $config->{default}->{HomeDomain};
-my $friendlyName = $config->{default}->{friendlyName};
 
 my %userinfo = getuserinfo($webuser);
 my $userID = $userinfo{'userID'};
@@ -70,10 +72,10 @@ my $uname = $userID;
 my $anonID = $userID;
 $anonID =~ s/^.*\@/anonymous@/;
 
-#$InnerMethod = "MSCHAPv2";
-#$OuterMethod = "PEAP";
-my $InnerMethod = "PAP";
+#my $OuterMethod = "PEAP";
+#my $InnerMethod = "MSCHAPv2";
 my $OuterMethod = "EAP-TTLS";
+my $InnerMethod = "PAP";
 
 
 #---- Profile composition part ----
@@ -222,7 +224,7 @@ EOS
 
 print <<"EOS";
 Content-Type: application/octet-stream
-Content-Disposition: attachment; filename="eduroam-config.onc"
+Content-Disposition: attachment; filename="$FileName.onc"
 
 $xml
 EOS

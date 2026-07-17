@@ -1,15 +1,15 @@
 #!/usr/bin/perl
 #
-# eduroam Provisioning Tools
-#  Simple CGI script for eduroam profile provisioning
+# Wi-Fi Provisioning Tools
+#  Simple CGI script for Wi-Fi provisioning
 #  Target: iOS/iPadOS 14+, macOS 10+
 # 
 # Usage:
 #  - Customize the configuration part below and the external file
-#    etc/eduroam-common.cfg.
+#    etc/config.ini.
 #  - Put this script on a web server as a CGI program.
 #    (Please refer to the HTTP server's manual for configuring CGI.)
-#  - Access https://<path_to_script>/eduroam.mobileconfig.
+#  - Access https://<path_to_script>/wifi.mobileconfig.cgi.
 # Notes:
 #  - It is recommended to sign the configuration profile (XML), although
 #    unsigned profiles can still be used.
@@ -37,6 +37,8 @@
 #	Add EAP-TLS support.
 # 20260715 Hideaki Goto (Tohoku University and eduroam JP)
 #	Modernize.
+# 20260717 Hideaki Goto (Tohoku University and eduroam JP)
+#	Some fixes and feature extentions.
 #
 
 use strict;
@@ -65,6 +67,7 @@ EOS
 	exit(0);
 }
 
+my $FileName = $config->{default}->{FileName};
 my $SSID = $config->{default}->{SSID};
 my $AAAFQDN = $config->{default}->{AAAFQDN};
 my $CAfile = $config->{default}->{CAfile};
@@ -75,12 +78,15 @@ my $PLuuid = $config->{default}->{PLuuid};
 $PLuuid= uc $PLuuid;	# make sure upper case
 my $PayloadDisplayName = $config->{default}->{PayloadDisplayName};
 my $cert = $config->{default}->{cert};
+my $Passpoint = $config->{default}->{Passpoint};
 my $HomeDomain = $config->{default}->{HomeDomain};
+my $RCOI = $config->{default}->{RCOI};
 my $friendlyName = $config->{default}->{friendlyName};
 my $description = $config->{default}->{description};
 my $signercert = $config->{default}->{signercert};
 my $signerchain = $config->{default}->{signerchain};
 my $signerkey = $config->{default}->{signerkey};
+my $NAIrealm = $config->{default}->{NAIrealm};
 
 my %userinfo = getuserinfo($webuser);
 my $userID = $userinfo{'userID'};
@@ -90,6 +96,15 @@ my $passwd = $userinfo{'passwd'};
 my $ExpirationDate = $userinfo{'ExpirationDate'};
 my $client_cert = $userinfo{'client_cert'};
 my $client_cert_pass = $userinfo{'client_cert_pass'};
+if ( $userinfo{'NAIrealm'} ){
+	$NAIrealm = $userinfo{'NAIrealm'};
+}
+if ( $userinfo{'friendlyName'} ){
+        $friendlyName = $userinfo{'friendlyName'};
+}
+if ( $userinfo{'PayloadDisplayName'} ){
+	$PayloadDisplayName = $userinfo{'PayloadDisplayName'};
+}
 
 
 my $uname = $userID;
@@ -119,6 +134,38 @@ $uuid2 = uc $uuid2;
 my $cert_uuid = Data::UUID->new->create_str();
 $cert_uuid = uc $cert_uuid;
 
+my $xml_HS20 = "\t\t\t<key>SSID_STR</key>\n\t\t\t<string>$SSID</string>\n";
+my $xml_HS20_a = '';
+
+if ( $Passpoint ){
+$xml_HS20_a = <<"EOS";
+			<key>DisplayedOperatorName</key>
+			<string>$friendlyName</string>
+			<key>DomainName</key>
+			<string>$HomeDomain</string>
+EOS
+	$xml_HS20 = '';
+	$RCOI =~ s/\s*//g;
+	if ( $RCOI ne '' ){
+		$RCOI = uc $RCOI;
+		my @ois = split(/,/, $RCOI);
+		$xml_HS20 .= "\t\t\t<key>RoamingConsortiumOIs</key>\n";
+		$xml_HS20 .= "\t\t\t<array>\n";
+		for my $oi (@ois){
+			$xml_HS20 .= "\t\t\t\t<string>$oi</string>\n";
+		}
+		$xml_HS20 .= "\t\t\t</array>\n";
+	}
+
+	if ( $NAIrealm ne '' ){
+		$xml_HS20 .= "\t\t\t<key>NAIRealmNames</key>\n";
+		$xml_HS20 .= "\t\t\t<array>\n";
+		$xml_HS20 .= "\t\t\t\t<string>$NAIrealm</string>\n";
+		$xml_HS20 .= "\t\t\t</array>\n";
+	}
+	$xml_HS20 .= "\t\t\t<key>ServiceProviderRoamingEnabled</key>\n\t\t\t<true/>\n";
+}
+
 my $xml_Expire = '';
 if ( $ExpirationDate ne '' ){
 $xml_Expire = <<"EOS";
@@ -139,7 +186,7 @@ my $cert = '';
 	}
 	close $fh;
 	chomp $cert;
-	$cert =~ s/\n//g;
+	$cert =~ s/[\r\n]//g;
 
 $xml_anchor = <<"EOS";
 				<key>PayloadCertificateAnchorUUID</key>
@@ -197,7 +244,7 @@ ${xml_Expire}	<key>PayloadContent</key>
 			<false/>
 			<key>DisableAssociationMACRandomization</key>
 			<false/>
-			<key>EAPClientConfiguration</key>
+${xml_HS20_a}			<key>EAPClientConfiguration</key>
 			<dict>
 				<key>AcceptEAPTypes</key>
 				<array>
@@ -238,9 +285,7 @@ ${xml_anchor}				<key>TTLSInnerAuthentication</key>
 			<integer>1</integer>
 			<key>ProxyType</key>
 			<string>None</string>
-			<key>SSID_STR</key>
-			<string>eduroam</string>
-		</dict>
+${xml_HS20}		</dict>
 		<dict>
 			<key>Password</key>
 			<string>$client_cert_pass</string>
@@ -297,7 +342,7 @@ ${xml_Expire}	<key>PayloadContent</key>
 			<false/>
 			<key>DisableAssociationMACRandomization</key>
 			<false/>
-			<key>EAPClientConfiguration</key>
+${xml_HS20_a}			<key>EAPClientConfiguration</key>
 			<dict>
 				<key>AcceptEAPTypes</key>
 				<array>
@@ -307,7 +352,7 @@ ${xml_Expire}	<key>PayloadContent</key>
 				<key>TLSMaximumVersion</key>
 				<string>1.2</string>
 				<key>TLSMinimumVersion</key>
-				<string>1.1</string>
+				<string>1.2</string>
 				<key>TLSTrustedServerNames</key>
 				<array>
 					<string>$AAAFQDN</string>
@@ -341,9 +386,7 @@ ${xml_anchor}				<key>TTLSInnerAuthentication</key>
 			<integer>1</integer>
 			<key>ProxyType</key>
 			<string>None</string>
-			<key>SSID_STR</key>
-			<string>eduroam</string>
-		</dict>
+${xml_HS20}		</dict>
 ${xml_cert}	</array>
 </dict>
 </plist>
@@ -354,7 +397,7 @@ EOS
 
 print <<EOS;
 Content-Type: application/x-apple-aspen-config
-Content-Disposition: attachment; filename="passpoint.mobileconfig"
+Content-Disposition: attachment; filename="$FileName.mobileconfig"
 
 EOS
 
