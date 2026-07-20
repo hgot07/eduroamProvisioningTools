@@ -2,7 +2,8 @@
 
 **Important notice:**  
 **Please use [Wi-Fi Provisioning Toolkit](https://github.com/hgot07/WiFiProvisioningToolkit) instead.**  
-**This repository is obsolete and no longer active.**
+**This repository is obsolete and no longer active.**  
+**代わりに [Wi-Fi Provisioning Toolkit](https://github.com/hgot07/WiFiProvisioningToolkit)をお使いください。**  
 
 <hr>
 
