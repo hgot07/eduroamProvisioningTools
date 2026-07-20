@@ -1,4 +1,11 @@
 # eduroamProvisioningTools
+
+**Important notice:**
+**Please use [Wi-Fi Provisioning Toolkit](https://github.com/hgot07/WiFiProvisioningToolkit) instead.**
+**This repository is obsolete and no longer active.**
+
+<hr>
+
 Tools and example codes for eduroam profile provisioning. (eduroam-on-OpenRoaming is not supported, but modification would be easy.)
 
 Only EAP-TTLS and EAP-TLS are supported. Some OSs may not support EAP-TLS.
