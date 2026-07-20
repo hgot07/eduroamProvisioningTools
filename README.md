@@ -1,7 +1,7 @@
 # eduroamProvisioningTools
 
-**Important notice:**
-**Please use [Wi-Fi Provisioning Toolkit](https://github.com/hgot07/WiFiProvisioningToolkit) instead.**
+**Important notice:**  
+**Please use [Wi-Fi Provisioning Toolkit](https://github.com/hgot07/WiFiProvisioningToolkit) instead.**  
 **This repository is obsolete and no longer active.**
 
 <hr>
